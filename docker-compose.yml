@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ms_summarizer_redis
+    networks:
+      - internal-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  summarizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ms_summarizer
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      INPUT_STREAM: events:text-extracted
+      OUTPUT_STREAM: events:summary-generated
+      DLQ_STREAM: events:summary-failed
+      CONSUMER_GROUP: summarizer-group
+      AI_PROVIDER: ${AI_PROVIDER:-openai}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal-net
+    restart: unless-stopped
+
+networks:
+  internal-net:
+    name: internal-net
+    driver: bridge
