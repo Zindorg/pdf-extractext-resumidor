@@ -53,6 +53,7 @@ class FakeLLMProvider(LLMProviderInterface):
         failures: list[Exception] | None = None,
         delay_s: float = 0.0,
         model: str = "fake-model-1",
+        max_context_tokens: int = 128_000,
     ) -> None:
         self.responses = list(responses or [])
         self.failures = list(failures or [])
@@ -60,10 +61,15 @@ class FakeLLMProvider(LLMProviderInterface):
         self.calls: list[tuple[str, int | None]] = []
         self.closed = False
         self._model = model
+        self._max_context_tokens = max_context_tokens
 
     @property
     def model_name(self) -> str:
         return self._model
+
+    @property
+    def max_context_tokens(self) -> int:
+        return self._max_context_tokens
 
     @property
     def call_count(self) -> int:

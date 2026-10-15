@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     backoff_base_s: float = Field(default=1.0, gt=0)
     backoff_cap_s: float = Field(default=8.0, gt=0)
 
+    # Token estimation
+    tokens_per_word: float = Field(default=1.3, gt=0)
+
+    # Context window (None = usar default del proveedor)
+    max_context_tokens: int | None = Field(default=None, ge=1)
+
+    # HTTP Server
+    http_enabled: bool = True
+    http_host: str = "0.0.0.0"
+    http_port: int = Field(default=8080, ge=1, le=65535)
+
     # Observabilidad
     log_level: str = "INFO"
 

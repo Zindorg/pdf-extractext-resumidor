@@ -16,6 +16,8 @@ dependencies = [
     "pydantic-settings>=2.14.0",
     "redis>=6.0.0",
     "httpx>=0.28.1",
+    "fastapi>=0.143.1",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [tool.uv]

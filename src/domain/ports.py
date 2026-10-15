@@ -23,6 +23,11 @@ class LLMProviderInterface(ABC):
     def model_name(self) -> str:
         """Identificador del modelo, usado para el campo ``model_used``."""
 
+    @property
+    @abstractmethod
+    def max_context_tokens(self) -> int:
+        """Límite de tokens de la ventana de contexto del modelo."""
+
     @abstractmethod
     async def aclose(self) -> None:
         """Libera los recursos de red del proveedor."""

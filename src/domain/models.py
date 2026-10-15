@@ -77,3 +77,14 @@ class StreamMessage(BaseModel):
 
     message_id: str
     fields: dict[str, str]
+
+
+class SummaryHttpResponse(BaseModel):
+    """Contrato de salida HTTP (workers.md §Resumidor): summary + summary_time_ms."""
+
+    summary: str
+    summary_time_ms: int = Field(ge=0)
+
+    @classmethod
+    def from_domain(cls, result: "SummaryResult") -> "SummaryHttpResponse":
+        return cls(summary=result.summary, summary_time_ms=result.processing_time_ms)

@@ -16,6 +16,7 @@ import time
 from src.application import prompts
 from src.application.chunking_service import ChunkingService
 from src.domain.exceptions import (
+    DocumentTooLongError,
     EmptyTextError,
     LLMProviderError,
     LLMTimeoutError,
@@ -25,6 +26,10 @@ from src.domain.models import SummaryRequest, SummaryResult
 from src.domain.ports import EventPublisherInterface, LLMProviderInterface
 
 logger = logging.getLogger("summarizer.application")
+
+_CONTEXT_EXCEEDED_KEYWORDS = frozenset(
+    {"context", "max_tokens", "token limit", "context length", "413"}
+)
 
 
 class SummarizeUseCase:
@@ -41,11 +46,17 @@ class SummarizeUseCase:
         backoff_base_s: float = 1.0,
         backoff_cap_s: float = 8.0,
         max_output_tokens: int | None = 1024,
+        max_context_tokens: int = 128_000,
+        tokens_per_word: float = 1.3,
     ) -> None:
         if max_retries < 1:
             raise ValueError("max_retries must be >= 1")
         if llm_timeout_s <= 0:
             raise ValueError("llm_timeout_s must be > 0")
+        if max_context_tokens < 1:
+            raise ValueError("max_context_tokens must be >= 1")
+        if tokens_per_word <= 0:
+            raise ValueError("tokens_per_word must be > 0")
         self._llm = llm
         self._publisher = publisher
         self._chunking = chunking
@@ -54,6 +65,8 @@ class SummarizeUseCase:
         self._backoff_base_s = backoff_base_s
         self._backoff_cap_s = backoff_cap_s
         self._max_output_tokens = max_output_tokens
+        self._max_context_tokens = max_context_tokens
+        self._tokens_per_word = tokens_per_word
 
     async def execute(self, request: SummaryRequest) -> SummaryResult:
         started = time.monotonic()
@@ -63,9 +76,25 @@ class SummarizeUseCase:
 
         document_id = str(request.document_id)
         word_count = len(text.split())
+        estimated_tokens = int(word_count * self._tokens_per_word)
+
+        if estimated_tokens > self._max_context_tokens:
+            logger.warning(
+                "document too long",
+                extra={
+                    "document_id": document_id,
+                    "word_count": word_count,
+                    "estimated_tokens": estimated_tokens,
+                    "max_context_tokens": self._max_context_tokens,
+                },
+            )
+            raise DocumentTooLongError(
+                f"document_too_long: estimated {estimated_tokens} tokens exceeds limit {self._max_context_tokens}"
+            )
+
         logger.info(
             "document received",
-            extra={"document_id": document_id, "word_count": word_count},
+            extra={"document_id": document_id, "word_count": word_count, "estimated_tokens": estimated_tokens},
         )
 
         if self._chunking.needs_chunking(text):
@@ -119,6 +148,15 @@ class SummarizeUseCase:
                 error = LLMTimeoutError("llm_timeout: provider did not respond in time")
             except LLMProviderError as exc:
                 error = exc
+
+            # Mapear errores de contexto excedido del proveedor a DocumentTooLongError
+            error_msg = str(error).lower()
+            if any(keyword in error_msg for keyword in _CONTEXT_EXCEEDED_KEYWORDS):
+                logger.warning(
+                    "context length exceeded",
+                    extra={"document_id": document_id, "error": str(error)},
+                )
+                raise DocumentTooLongError("document_too_long: context length exceeded") from error
 
             if not error.retriable or attempt >= self._max_retries:
                 raise SummarizationFailedError(

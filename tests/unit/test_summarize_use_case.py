@@ -9,6 +9,7 @@ import pytest
 from src.application.chunking_service import ChunkingService
 from src.application.summarize_use_case import SummarizeUseCase
 from src.domain.exceptions import (
+    DocumentTooLongError,
     EmptyTextError,
     LLMProviderError,
     LLMTimeoutError,
@@ -29,17 +30,22 @@ def build_use_case(
     chunking: ChunkingService | None = None,
     max_retries: int = 3,
     llm_timeout_s: float = 5.0,
+    max_context_tokens: int = 128_000,
+    tokens_per_word: float = 1.3,
     **extra: object,
 ) -> SummarizeUseCase:
-    return SummarizeUseCase(
-        llm=llm,
-        publisher=publisher,
-        chunking=chunking or ChunkingService(),
-        max_retries=max_retries,
-        llm_timeout_s=llm_timeout_s,
+    kwargs = {
+        "llm": llm,
+        "publisher": publisher,
+        "chunking": chunking or ChunkingService(),
+        "max_retries": max_retries,
+        "llm_timeout_s": llm_timeout_s,
+        "max_context_tokens": max_context_tokens,
+        "tokens_per_word": tokens_per_word,
         **FAST_BACKOFF,
         **extra,
-    )
+    }
+    return SummarizeUseCase(**kwargs)
 
 
 def make_request(text: str, **extra: object) -> SummaryRequest:
@@ -227,3 +233,142 @@ class TestUseCaseConfiguration:
         await use_case.execute(request)
 
         assert all("Tono: formal." in prompt for prompt, _ in llm.calls)
+
+
+class TestDocumentTooLong:
+    """Pruebas para DocumentTooLongError (workers.md: reason=document_too_long)."""
+
+    async def test_estimated_tokens_exceed_limit_raises(self) -> None:
+        """Si la estimación de tokens supera el límite, lanza DocumentTooLongError."""
+        llm = FakeLLMProvider(max_context_tokens=100)  # límite muy bajo
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_context_tokens=100,
+            tokens_per_word=1.3,
+            **FAST_BACKOFF,
+        )
+        # ~80 palabras * 1.3 = 104 tokens > 100
+        text = " ".join(f"palabra{i}." for i in range(80))
+
+        with pytest.raises(DocumentTooLongError) as excinfo:
+            await use_case.execute(make_request(text))
+
+        assert excinfo.value.code == "document_too_long"
+        assert llm.call_count == 0
+        assert publisher.published == []
+
+    async def test_exact_limit_allows_processing(self) -> None:
+        """Si la estimación está justo en el límite, procesa normalmente."""
+        llm = FakeLLMProvider(responses=["Resumen OK"], max_context_tokens=100)
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_context_tokens=100,
+            tokens_per_word=1.0,  # 100 palabras = 100 tokens
+            **FAST_BACKOFF,
+        )
+        text = " ".join(f"palabra{i}." for i in range(100))
+
+        result = await use_case.execute(make_request(text))
+
+        assert result.summary == "Resumen OK"
+        assert llm.call_count == 1
+
+    async def test_provider_context_error_mapped_to_document_too_long(self) -> None:
+        """Error 413/context length del proveedor se mapea a DocumentTooLongError."""
+        llm = FakeLLMProvider(
+            failures=[LLMProviderError("llm_http_error: status=413 context length exceeded")],
+            max_context_tokens=128_000,
+        )
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_context_tokens=128_000,
+            **FAST_BACKOFF,
+        )
+
+        with pytest.raises(DocumentTooLongError) as excinfo:
+            await use_case.execute(make_request("Texto corto."))
+
+        assert excinfo.value.code == "document_too_long"
+        assert llm.call_count == 1
+
+    async def test_provider_max_tokens_error_mapped(self) -> None:
+        """Error 'max_tokens' del proveedor se mapea a DocumentTooLongError."""
+        llm = FakeLLMProvider(
+            failures=[LLMProviderError("llm_http_error: max_tokens exceeded")],
+            max_context_tokens=128_000,
+        )
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_context_tokens=128_000,
+            **FAST_BACKOFF,
+        )
+
+        with pytest.raises(DocumentTooLongError) as excinfo:
+            await use_case.execute(make_request("Texto corto."))
+
+        assert excinfo.value.code == "document_too_long"
+
+    async def test_use_case_validation_invalid_max_context_tokens(self) -> None:
+        """Parámetro max_context_tokens < 1 levanta ValueError."""
+        from src.application.chunking_service import ChunkingService
+        from src.domain.ports import LLMProviderInterface
+
+        class DummyLLM(LLMProviderInterface):
+            @property
+            def model_name(self) -> str:
+                return "dummy"
+
+            @property
+            def max_context_tokens(self) -> int:
+                return 128_000
+
+            async def generate_summary(self, text: str, max_tokens: int | None = None) -> str:
+                return "dummy"
+
+            async def aclose(self) -> None:
+                pass
+
+        with pytest.raises(ValueError, match="max_context_tokens must be >= 1"):
+            SummarizeUseCase(
+                llm=DummyLLM(),
+                publisher=FakeEventPublisher(),
+                chunking=ChunkingService(),
+                max_context_tokens=0,
+            )
+
+    async def test_use_case_validation_invalid_tokens_per_word(self) -> None:
+        """Parámetro tokens_per_word <= 0 levanta ValueError."""
+        from src.application.chunking_service import ChunkingService
+        from src.domain.ports import LLMProviderInterface
+
+        class DummyLLM(LLMProviderInterface):
+            @property
+            def model_name(self) -> str:
+                return "dummy"
+
+            @property
+            def max_context_tokens(self) -> int:
+                return 128_000
+
+            async def generate_summary(self, text: str, max_tokens: int | None = None) -> str:
+                return "dummy"
+
+            async def aclose(self) -> None:
+                pass
+
+        with pytest.raises(ValueError, match="tokens_per_word must be > 0"):
+            SummarizeUseCase(
+                llm=DummyLLM(),
+                publisher=FakeEventPublisher(),
+                chunking=ChunkingService(),
+                max_context_tokens=128_000,
+                tokens_per_word=0,
+            )

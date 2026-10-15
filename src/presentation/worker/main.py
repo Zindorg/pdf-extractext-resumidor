@@ -74,7 +74,7 @@ def build(
         output_stream=settings.output_stream,
         dlq_stream=settings.dlq_stream,
     )
-    llm = create_llm_provider(settings)
+    llm = create_llm_provider(settings, max_context_tokens_override=settings.max_context_tokens)
     use_case = SummarizeUseCase(
         llm=llm,
         publisher=publisher,
@@ -88,6 +88,8 @@ def build(
         backoff_base_s=settings.backoff_base_s,
         backoff_cap_s=settings.backoff_cap_s,
         max_output_tokens=settings.max_output_tokens,
+        max_context_tokens=llm.max_context_tokens,
+        tokens_per_word=settings.tokens_per_word,
     )
     return WorkerComponents(use_case, consumer, publisher, llm, redis_client)
 

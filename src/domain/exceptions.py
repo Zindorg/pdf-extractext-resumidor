@@ -69,3 +69,10 @@ class SummarizationFailedError(DomainError):
         self.cause_code = cause_code
         self.code = f"{self.code}:{cause_code}"
         super().__init__(message or self.code)
+
+
+class DocumentTooLongError(DomainError):
+    """El texto supera la ventana de contexto del modelo."""
+
+    code = "document_too_long"
+    retriable = False
