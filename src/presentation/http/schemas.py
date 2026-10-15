@@ -31,5 +31,5 @@ class SummarizeHttpResponse(BaseModel):
     summary_time_ms: int = Field(ge=0)
 
     @classmethod
-    def from_domain(cls, domain_resp: SummaryHttpResponse) -> "SummarizeHttpResponse":
+    def from_domain(cls, domain_resp: SummaryHttpResponse) -> SummarizeHttpResponse:
         return cls(summary=domain_resp.summary, summary_time_ms=domain_resp.summary_time_ms)

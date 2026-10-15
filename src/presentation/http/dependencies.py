@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 
 from fastapi import Depends, FastAPI
+
 from src.application.chunking_service import ChunkingService
 from src.application.summarize_use_case import SummarizeUseCase
 from src.domain.ports import EventPublisherInterface, LLMProviderInterface

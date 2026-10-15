@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from tests.fakes import FakeLLMProvider
 
 from src.application.summarize_use_case import SummarizeUseCase
-from src.domain.exceptions import DocumentTooLongError, EmptyTextError, InvalidPayloadError
-from src.domain.models import SummaryOptions, SummaryRequest, SummaryResult
+from src.domain.exceptions import DocumentTooLongError, EmptyTextError
+from src.domain.models import SummaryResult
 from src.presentation.http.dependencies import get_use_case
 from src.presentation.http.main import app
-from tests.fakes import FakeEventPublisher, FakeLLMProvider
 
 
 @pytest.fixture

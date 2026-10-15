@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-
 from fastapi import Depends, FastAPI
+
 from src.application.summarize_use_case import SummarizeUseCase
 from src.domain.exceptions import DomainError
 from src.domain.models import SummaryHttpResponse
 from src.infrastructure.config import get_settings
-from src.presentation.http.dependencies import lifespan as http_lifespan, get_use_case
+from src.presentation.http.dependencies import get_use_case
+from src.presentation.http.dependencies import lifespan as http_lifespan
 from src.presentation.http.error_handlers import domain_error_handler, generic_error_handler
 from src.presentation.http.schemas import SummarizeHttpRequest, SummarizeHttpResponse
-
 
 app = FastAPI(
     title="Summarizer",
