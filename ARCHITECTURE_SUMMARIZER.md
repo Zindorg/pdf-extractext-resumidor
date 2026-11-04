@@ -130,7 +130,7 @@ pdf-extractext-resumidor/
 ├── Dockerfile                  # Empaquetado optimizado en Python 3.12-slim
 ├── src/
 │   ├── domain/                 # Entidades, DTOs y Puertos abstractos (sin dependencias externas)
-│   │   ├── models.py           # Modelos de dominio (SummaryRequest, SummaryResult, SummaryHttpResponse)
+│   │   ├── models.py           # Modelos de dominio (SummaryRequest, SummaryResult, StreamMessage)
 │   │   ├── ports.py            # Interfaces de proveedores (LLMProviderInterface, EventConsumer/PublisherInterface)
 │   │   └── exceptions.py       # Excepciones de dominio tipadas con `code` apto para DLQ/HTTP
 │   ├── application/            # Casos de uso de la lógica de resumen (reglas de negocio puras)
@@ -169,15 +169,18 @@ pdf-extractext-resumidor/
 from abc import ABC, abstractmethod
 from src.domain.models import SummaryResult
 
+
 class LLMProviderInterface(ABC):
     @abstractmethod
     async def generate_summary(self, text: str, max_tokens: int | None = None) -> str:
         """Envía el texto al modelo de IA y retorna la respuesta generada."""
         pass
 
+
 class EventConsumerInterface(ABC):
     @abstractmethod
     async def consume(self, handler): ...
+
 
 class EventPublisherInterface(ABC):
     @abstractmethod

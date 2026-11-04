@@ -12,7 +12,7 @@ Parte del ecosistema Hub & Spoke: expone **API REST síncrona (POST /summarize)*
 ```
 src/
 ├── domain/                  # Entidades, puertos y excepciones (sin dependencias externas)
-│   ├── models.py            # SummaryRequest / SummaryResult / SummaryHttpResponse
+│   ├── models.py            # SummaryRequest / SummaryResult / StreamMessage
 │   ├── ports.py             # LLMProviderInterface, EventConsumer/PublisherInterface
 │   └── exceptions.py        # Excepciones tipadas con `code` (DLQ / HTTP 422/503)
 ├── application/             # Casos de uso (reglas de negocio puras)
