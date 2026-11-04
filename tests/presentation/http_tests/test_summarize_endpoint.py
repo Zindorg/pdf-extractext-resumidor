@@ -7,22 +7,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from tests.fakes import FakeLLMProvider
 
 from src.application.summarize_use_case import SummarizeUseCase
-from src.domain.exceptions import DocumentTooLongError, EmptyTextError
-from src.domain.models import SummaryResult
+from src.domain.exceptions import DocumentTooLongError, DomainError, EmptyTextError
+from src.domain.models import SummaryRequest, SummaryResult
 from src.presentation.http.dependencies import get_use_case
 from src.presentation.http.main import app
 
 
 @pytest.fixture
-def mock_llm() -> FakeLLMProvider:
-    return FakeLLMProvider(responses=["Resumen generado por el modelo."], max_context_tokens=128_000)
-
-
-@pytest.fixture
-def mock_use_case(mock_llm: FakeLLMProvider) -> AsyncMock:
+def mock_use_case() -> AsyncMock:
     """Mock del caso de uso que devuelve un resultado controlado."""
     mock = AsyncMock(spec=SummarizeUseCase)
     mock.execute.return_value = SummaryResult(
@@ -74,6 +68,14 @@ class TestSummarizeEndpoint200:
         assert data["summary_time_ms"] >= 0
         assert data["summary"] == "Resumen generado por el modelo."
 
+        mock_use_case.execute.assert_awaited_once()
+        executed = mock_use_case.execute.await_args.args[0]
+        assert isinstance(executed, SummaryRequest)
+        assert str(executed.document_id) == payload["document_id"]
+        assert executed.extracted_text == payload["extracted_text"]
+        assert executed.options is not None
+        assert executed.options.length == "medium"
+
     async def test_response_time_matches_use_case(
         self, client: AsyncClient, mock_use_case: AsyncMock
     ) -> None:
@@ -89,12 +91,16 @@ class TestSummarizeEndpoint200:
         assert response.status_code == 200
         assert response.json()["summary_time_ms"] == 2500
 
-    async def test_without_options_field(self, client: AsyncClient) -> None:
+    async def test_without_options_field(
+        self, client: AsyncClient, mock_use_case: AsyncMock
+    ) -> None:
         payload = {"document_id": str(uuid.uuid4()), "extracted_text": "Texto sin opciones."}
         response = await client.post("/summarize", json=payload)
 
         assert response.status_code == 200
         assert "summary" in response.json()
+        executed = mock_use_case.execute.await_args.args[0]
+        assert executed.options is None
 
 
 class TestSummarizeEndpoint422:
@@ -118,7 +124,9 @@ class TestSummarizeEndpoint422:
     async def test_empty_text_returns_422_with_reason_empty_text(
         self, client: AsyncClient, mock_use_case: AsyncMock
     ) -> None:
-        mock_use_case.execute.side_effect = EmptyTextError("empty_text: extracted_text has no content")
+        mock_use_case.execute.side_effect = EmptyTextError(
+            "empty_text: extracted_text has no content"
+        )
         payload = make_valid_request("   \n  ")  # solo whitespace
         response = await client.post("/summarize", json=payload)
 
@@ -128,7 +136,7 @@ class TestSummarizeEndpoint422:
         assert "message" in data
 
     async def test_invalid_payload_returns_422(
-        self, client: AsyncClient
+        self, client: AsyncClient, mock_use_case: AsyncMock
     ) -> None:
         """FastAPI valida el payload antes de llamar al use_case.
         El formato de error es el estándar de Pydantic/FastAPI, no el nuestro."""
@@ -139,6 +147,7 @@ class TestSummarizeEndpoint422:
         # FastAPI devuelve errores de validación con formato estándar
         data = response.json()
         assert "detail" in data  # Formato estándar de FastAPI
+        mock_use_case.execute.assert_not_awaited()
 
 
 class TestSummarizeEndpoint503:
@@ -147,8 +156,6 @@ class TestSummarizeEndpoint503:
     async def test_other_domain_error_returns_503(
         self, client: AsyncClient, mock_use_case: AsyncMock
     ) -> None:
-        from src.domain.exceptions import DomainError
-
         class CustomDomainError(DomainError):
             code = "custom_error"
 

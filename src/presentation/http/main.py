@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import Depends, FastAPI
 
 from src.application.summarize_use_case import SummarizeUseCase
 from src.domain.exceptions import DomainError
-from src.domain.models import SummaryHttpResponse
 from src.infrastructure.config import get_settings
 from src.presentation.http.dependencies import get_use_case
 from src.presentation.http.dependencies import lifespan as http_lifespan
@@ -25,7 +26,7 @@ app.add_exception_handler(Exception, generic_error_handler)
 @app.post("/summarize", response_model=SummarizeHttpResponse)
 async def summarize_endpoint(
     request: SummarizeHttpRequest,
-    use_case: SummarizeUseCase = Depends(get_use_case),
+    use_case: Annotated[SummarizeUseCase, Depends(get_use_case)],
 ) -> SummarizeHttpResponse:
     """Genera un resumen del texto extraído.
 
@@ -34,10 +35,8 @@ async def summarize_endpoint(
     - Response 200: {summary, summary_time_ms}
     - Response 422: {reason, message} — reason ∈ {document_too_long, empty_text, invalid_payload}
     """
-    domain_request = request.to_domain()
-    result = await use_case.execute(domain_request)
-    domain_resp = SummaryHttpResponse.from_domain(result)
-    return SummarizeHttpResponse.from_domain(domain_resp)
+    result = await use_case.execute(request.to_domain())
+    return SummarizeHttpResponse.from_result(result)
 
 
 @app.get("/health")

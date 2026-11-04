@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from uuid import uuid4
 
 from src.application.chunking_service import ChunkingService
@@ -37,8 +38,6 @@ def make_message(payload: dict, message_id: str = "1-1", raw: bool = False) -> S
     if raw:
         fields = {key: str(value) for key, value in payload.items()}
     else:
-        import json
-
         fields = {"payload": json.dumps(payload)}
     return StreamMessage(message_id=message_id, fields=fields)
 

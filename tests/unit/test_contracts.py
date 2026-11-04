@@ -8,7 +8,13 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
-from src.domain.exceptions import InvalidPayloadError
+from src.domain.exceptions import (
+    DocumentTooLongError,
+    EmptyTextError,
+    InvalidPayloadError,
+    LLMTimeoutError,
+    SummarizationFailedError,
+)
 from src.domain.models import SummaryOptions, SummaryRequest, SummaryResult
 
 UUID1 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
@@ -116,33 +122,23 @@ class TestDomainExceptions:
     """Tests para excepciones de dominio (códigos estables para workers.md)."""
 
     def test_document_too_long_error_code(self) -> None:
-        from src.domain.exceptions import DocumentTooLongError
-
         exc = DocumentTooLongError("document_too_long: text too long")
         assert exc.code == "document_too_long"
         assert exc.retriable is False
 
     def test_invalid_payload_error_code(self) -> None:
-        from src.domain.exceptions import InvalidPayloadError
-
         exc = InvalidPayloadError("invalid_payload: missing field")
         assert exc.code == "invalid_payload"
 
     def test_empty_text_error_code(self) -> None:
-        from src.domain.exceptions import EmptyTextError
-
         exc = EmptyTextError("empty_text: no content")
         assert exc.code == "empty_text"
 
     def test_llm_timeout_error_retriable(self) -> None:
-        from src.domain.exceptions import LLMTimeoutError
-
         exc = LLMTimeoutError("timeout")
         assert exc.retriable is True
 
     def test_summarization_failed_error_includes_cause(self) -> None:
-        from src.domain.exceptions import SummarizationFailedError
-
         exc = SummarizationFailedError("failed", cause_code="llm_timeout")
         assert exc.code == "summarization_failed:llm_timeout"
         assert exc.cause_code == "llm_timeout"

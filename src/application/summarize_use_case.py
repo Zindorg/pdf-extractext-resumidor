@@ -94,7 +94,11 @@ class SummarizeUseCase:
 
         logger.info(
             "document received",
-            extra={"document_id": document_id, "word_count": word_count, "estimated_tokens": estimated_tokens},
+            extra={
+                "document_id": document_id,
+                "word_count": word_count,
+                "estimated_tokens": estimated_tokens,
+            },
         )
 
         if self._chunking.needs_chunking(text):

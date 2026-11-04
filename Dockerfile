@@ -35,7 +35,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/app/.venv/bin:$PATH"
 
-# Usuario de sistema sin shell ni home.
+# Usuario de sistema sin shell ni home.op
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid 10001 --no-create-home \
                --home-dir /nonexistent --shell /usr/sbin/nologin app \

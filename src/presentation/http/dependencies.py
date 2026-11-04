@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from functools import lru_cache
+from typing import Annotated
 
 from fastapi import Depends, FastAPI
 
 from src.application.chunking_service import ChunkingService
 from src.application.summarize_use_case import SummarizeUseCase
 from src.domain.ports import EventPublisherInterface, LLMProviderInterface
-from src.infrastructure.config import Settings, get_settings
+from src.infrastructure.config import get_settings
 from src.infrastructure.llm_clients.factory import create_llm_provider
 from src.infrastructure.messaging.null_publisher import NullPublisher
 
@@ -25,11 +25,6 @@ class AppState:
 _app_state = AppState()
 
 
-@lru_cache(maxsize=1)
-def _get_settings() -> Settings:
-    return get_settings()
-
-
 async def get_llm() -> LLMProviderInterface:
     """Provee el cliente LLM inicializado en lifespan."""
     if _app_state.llm is None:
@@ -37,10 +32,12 @@ async def get_llm() -> LLMProviderInterface:
     return _app_state.llm
 
 
-async def get_use_case(llm: LLMProviderInterface = Depends(get_llm)) -> SummarizeUseCase:
+async def get_use_case(
+    llm: Annotated[LLMProviderInterface, Depends(get_llm)],
+) -> SummarizeUseCase:
     """Provee el caso de uso con dependencias resueltas."""
     if _app_state.use_case is None:
-        settings = _get_settings()
+        settings = get_settings()
         publisher: EventPublisherInterface = NullPublisher()
         _app_state.use_case = SummarizeUseCase(
             llm=llm,
@@ -64,8 +61,10 @@ async def get_use_case(llm: LLMProviderInterface = Depends(get_llm)) -> Summariz
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ciclo de vida de la aplicación HTTP: init LLM en startup, close en shutdown."""
-    settings = _get_settings()
-    _app_state.llm = create_llm_provider(settings, max_context_tokens_override=settings.max_context_tokens)
+    settings = get_settings()
+    _app_state.llm = create_llm_provider(
+        settings, max_context_tokens_override=settings.max_context_tokens
+    )
     yield
     if _app_state.llm is not None:
         await _app_state.llm.aclose()

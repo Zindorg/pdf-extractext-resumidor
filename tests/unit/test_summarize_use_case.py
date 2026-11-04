@@ -318,27 +318,9 @@ class TestDocumentTooLong:
 
     async def test_use_case_validation_invalid_max_context_tokens(self) -> None:
         """Parámetro max_context_tokens < 1 levanta ValueError."""
-        from src.application.chunking_service import ChunkingService
-        from src.domain.ports import LLMProviderInterface
-
-        class DummyLLM(LLMProviderInterface):
-            @property
-            def model_name(self) -> str:
-                return "dummy"
-
-            @property
-            def max_context_tokens(self) -> int:
-                return 128_000
-
-            async def generate_summary(self, text: str, max_tokens: int | None = None) -> str:
-                return "dummy"
-
-            async def aclose(self) -> None:
-                pass
-
         with pytest.raises(ValueError, match="max_context_tokens must be >= 1"):
             SummarizeUseCase(
-                llm=DummyLLM(),
+                llm=FakeLLMProvider(),
                 publisher=FakeEventPublisher(),
                 chunking=ChunkingService(),
                 max_context_tokens=0,
@@ -346,27 +328,9 @@ class TestDocumentTooLong:
 
     async def test_use_case_validation_invalid_tokens_per_word(self) -> None:
         """Parámetro tokens_per_word <= 0 levanta ValueError."""
-        from src.application.chunking_service import ChunkingService
-        from src.domain.ports import LLMProviderInterface
-
-        class DummyLLM(LLMProviderInterface):
-            @property
-            def model_name(self) -> str:
-                return "dummy"
-
-            @property
-            def max_context_tokens(self) -> int:
-                return 128_000
-
-            async def generate_summary(self, text: str, max_tokens: int | None = None) -> str:
-                return "dummy"
-
-            async def aclose(self) -> None:
-                pass
-
         with pytest.raises(ValueError, match="tokens_per_word must be > 0"):
             SummarizeUseCase(
-                llm=DummyLLM(),
+                llm=FakeLLMProvider(),
                 publisher=FakeEventPublisher(),
                 chunking=ChunkingService(),
                 max_context_tokens=128_000,

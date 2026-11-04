@@ -13,8 +13,6 @@ from src.domain.ports import EventConsumerInterface
 
 logger = logging.getLogger("summarizer.infrastructure.consumer")
 
-ACK_BLOCK_MS = 0  # no bloqueante en claim; el bloqueo vive en read()
-
 
 class RedisStreamConsumer(EventConsumerInterface):
     """Lee eventos de un stream con XREADGROUP y confirma con XACK."""
@@ -90,9 +88,6 @@ class RedisStreamConsumer(EventConsumerInterface):
     @staticmethod
     def _to_messages(entries: Any) -> list[StreamMessage]:
         return [
-            StreamMessage(
-                message_id=message_id,
-                fields={key: value for key, value in fields.items()},
-            )
+            StreamMessage(message_id=message_id, fields=dict(fields))
             for message_id, fields in (entries or [])
         ]

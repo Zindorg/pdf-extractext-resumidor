@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from src.domain.models import SummaryHttpResponse, SummaryOptions, SummaryRequest
+from src.domain.models import SummaryOptions, SummaryRequest, SummaryResult
 
 
 class SummarizeHttpRequest(BaseModel):
@@ -31,5 +31,5 @@ class SummarizeHttpResponse(BaseModel):
     summary_time_ms: int = Field(ge=0)
 
     @classmethod
-    def from_domain(cls, domain_resp: SummaryHttpResponse) -> SummarizeHttpResponse:
-        return cls(summary=domain_resp.summary, summary_time_ms=domain_resp.summary_time_ms)
+    def from_result(cls, result: SummaryResult) -> SummarizeHttpResponse:
+        return cls(summary=result.summary, summary_time_ms=result.processing_time_ms)
