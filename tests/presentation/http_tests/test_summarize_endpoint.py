@@ -7,9 +7,16 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from tests.fakes import FakeEventPublisher, FakeLLMProvider
 
+from src.application.chunking_service import ChunkingService
 from src.application.summarize_use_case import SummarizeUseCase
-from src.domain.exceptions import DocumentTooLongError, DomainError, EmptyTextError
+from src.domain.exceptions import (
+    DocumentTooLongError,
+    DomainError,
+    EmptyTextError,
+    SummarizationFailedError,
+)
 from src.domain.models import SummaryRequest, SummaryResult
 from src.presentation.http.dependencies import get_use_case
 from src.presentation.http.main import app
@@ -102,6 +109,22 @@ class TestSummarizeEndpoint200:
         executed = mock_use_case.execute.await_args.args[0]
         assert executed.options is None
 
+    async def test_long_summary_is_returned_without_truncation(self) -> None:
+        long_summary = " ".join(f"Oración {i} completa." for i in range(3000))
+        use_case = SummarizeUseCase(
+            llm=FakeLLMProvider(responses=[long_summary]),
+            publisher=FakeEventPublisher(),
+            chunking=ChunkingService(),
+        )
+        app.dependency_overrides[get_use_case] = lambda: use_case
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+            response = await client.post("/summarize", json=make_valid_request())
+
+        assert response.status_code == 200
+        assert response.json()["summary"] == long_summary
+        assert response.json()["summary"].endswith("completa.")
+
 
 class TestSummarizeEndpoint422:
     """POST /summarize → 422 con {reason, message} según workers.md."""
@@ -166,6 +189,21 @@ class TestSummarizeEndpoint503:
         assert response.status_code == 503
         data = response.json()
         assert data["reason"] == "summarizer_unavailable"
+
+    async def test_truncation_failure_keeps_cause_code(
+        self, client: AsyncClient, mock_use_case: AsyncMock
+    ) -> None:
+        mock_use_case.execute.side_effect = SummarizationFailedError(
+            "summarization_failed: after 3 attempt(s)",
+            cause_code="llm_truncated",
+        )
+        response = await client.post("/summarize", json=make_valid_request())
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["reason"] == "summarizer_unavailable"
+        assert data["message"] == "summarization_failed: after 3 attempt(s)"
+        assert data["cause_code"] == "llm_truncated"
 
 
 class TestHealthEndpoint:

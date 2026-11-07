@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from src.domain.exceptions import DomainError
+from src.domain.exceptions import DomainError, SummarizationFailedError
 
 _KNOWN_422_CODES = frozenset({"document_too_long", "empty_text", "invalid_payload"})
 
@@ -18,10 +18,10 @@ async def domain_error_handler(request: Request, exc: DomainError) -> JSONRespon
             content={"reason": exc.code, "message": str(exc)},
         )
     # Otros errores de dominio -> 503 (servicio no disponible)
-    return JSONResponse(
-        status_code=503,
-        content={"reason": "summarizer_unavailable", "message": str(exc)},
-    )
+    content: dict[str, str] = {"reason": "summarizer_unavailable", "message": str(exc)}
+    if isinstance(exc, SummarizationFailedError):
+        content["cause_code"] = exc.cause_code
+    return JSONResponse(status_code=503, content=content)
 
 
 async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:

@@ -53,6 +53,7 @@ class FakeLLMProvider(LLMProviderInterface):
         delay_s: float = 0.0,
         model: str = "fake-model-1",
         max_context_tokens: int = 128_000,
+        default_response: str | None = None,
     ) -> None:
         self.responses = list(responses or [])
         self.failures = list(failures or [])
@@ -61,6 +62,7 @@ class FakeLLMProvider(LLMProviderInterface):
         self.closed = False
         self._model = model
         self._max_context_tokens = max_context_tokens
+        self._default_response = default_response
 
     @property
     def model_name(self) -> str:
@@ -82,6 +84,8 @@ class FakeLLMProvider(LLMProviderInterface):
             raise self.failures.pop(0)
         if self.responses:
             return self.responses.pop(0)
+        if self._default_response is not None:
+            return self._default_response
         return f"FAKE_SUMMARY_{len(self.calls)}"
 
     async def aclose(self) -> None:

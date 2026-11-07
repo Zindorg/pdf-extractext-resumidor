@@ -29,6 +29,11 @@ class TestDefaults:
         assert settings.llm_timeout_s == 30.0
         assert settings.max_retries == 3
 
+    def test_output_token_defaults(self) -> None:
+        settings = Settings(_env_file=None)
+        assert settings.max_output_tokens == 4096
+        assert settings.max_output_tokens_cap == 8192
+
 
 class TestEnvironmentOverrides:
     def test_env_vars_are_read(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -47,6 +52,13 @@ class TestEnvironmentOverrides:
         settings = Settings(_env_file=None)
         assert settings.ai_base_url == "http://localhost:11434/v1"
 
+    def test_output_token_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("MAX_OUTPUT_TOKENS", "2048")
+        monkeypatch.setenv("MAX_OUTPUT_TOKENS_CAP", "4096")
+        settings = Settings(_env_file=None)
+        assert settings.max_output_tokens == 2048
+        assert settings.max_output_tokens_cap == 4096
+
 
 class TestValidation:
     @pytest.mark.parametrize(
@@ -57,6 +69,7 @@ class TestValidation:
             {"llm_timeout_s": 0},
             {"max_retries": 0},
             {"block_ms": -1},
+            {"max_output_tokens": 9000, "max_output_tokens_cap": 8192},
         ],
     )
     def test_invalid_settings_raise(self, kwargs: dict) -> None:

@@ -52,6 +52,7 @@ async def get_use_case(
             backoff_base_s=settings.backoff_base_s,
             backoff_cap_s=settings.backoff_cap_s,
             max_output_tokens=settings.max_output_tokens,
+            max_output_tokens_cap=settings.max_output_tokens_cap,
             max_context_tokens=llm.max_context_tokens,
             tokens_per_word=settings.tokens_per_word,
         )

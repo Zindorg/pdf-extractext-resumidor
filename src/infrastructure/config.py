@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     chunk_threshold: int = Field(default=3000, gt=0)
     chunk_size: int = Field(default=1000, gt=0)
     chunk_overlap: int = Field(default=100, ge=0)
-    max_output_tokens: int = Field(default=1024, gt=0)
+    max_output_tokens: int = Field(default=4096, gt=0)
+    max_output_tokens_cap: int = Field(default=8192, gt=0)
 
     # Timeouts y reintentos
     llm_timeout_s: float = Field(default=30.0, gt=0)
@@ -66,6 +67,12 @@ class Settings(BaseSettings):
     def _check_chunking(self) -> Settings:
         if self.chunk_overlap >= self.chunk_size:
             raise ValueError("chunk_overlap must be smaller than chunk_size")
+        return self
+
+    @model_validator(mode="after")
+    def _check_output_tokens(self) -> Settings:
+        if self.max_output_tokens_cap < self.max_output_tokens:
+            raise ValueError("max_output_tokens_cap must be >= max_output_tokens")
         return self
 
     @model_validator(mode="after")

@@ -14,6 +14,7 @@ from src.application.prompts import system_prompt
 from src.domain.exceptions import (
     LLMProviderError,
     LLMTimeoutError,
+    LLMTruncatedError,
     LLMUnavailableError,
 )
 from src.domain.ports import LLMProviderInterface
@@ -21,6 +22,7 @@ from src.domain.ports import LLMProviderInterface
 logger = logging.getLogger("summarizer.infrastructure.llm")
 
 _RETRIABLE_STATUS = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
+_TRUNCATED_FINISH_REASONS = frozenset({"length", "max_tokens"})
 
 _DEFAULT_CONTEXT_TOKENS = {
     "openai": 128_000,
@@ -89,11 +91,30 @@ class OpenAICompatibleLLM(LLMProviderInterface):
         if response.status_code >= 400:
             raise self._status_error(response.status_code)
 
-        content = self._extract_content(response)
+        content, finish_reason, completion_tokens = self._extract_content(response)
         logger.info(
             "llm response received",
-            extra={"model": self._model, "status_code": response.status_code},
+            extra={
+                "model": self._model,
+                "status_code": response.status_code,
+                "finish_reason": finish_reason,
+                "completion_tokens": completion_tokens,
+            },
         )
+        if finish_reason in _TRUNCATED_FINISH_REASONS:
+            logger.warning(
+                "llm output truncated by provider",
+                extra={
+                    "model": self._model,
+                    "status_code": response.status_code,
+                    "finish_reason": finish_reason,
+                    "completion_tokens": completion_tokens,
+                },
+            )
+            raise LLMTruncatedError(
+                "llm_truncated: provider stopped at the output token limit",
+                retriable=True,
+            )
         return content
 
     async def aclose(self) -> None:
@@ -108,14 +129,22 @@ class OpenAICompatibleLLM(LLMProviderInterface):
         )
 
     @staticmethod
-    def _extract_content(response: httpx.Response) -> str:
+    def _extract_content(response: httpx.Response) -> tuple[str, str | None, int | None]:
         try:
             body = response.json()
-            content = body["choices"][0]["message"]["content"]
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            choice = body["choices"][0]
+            content = choice["message"]["content"]
+            finish_reason = choice.get("finish_reason")
+            usage = body.get("usage") or {}
+            completion_tokens = usage.get("completion_tokens")
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
             raise LLMProviderError(
                 "llm_protocol_error: unexpected response shape", retriable=False
             ) from exc
         if not isinstance(content, str) or not content.strip():
             raise LLMProviderError("llm_protocol_error: empty completion", retriable=True)
-        return content.strip()
+        if not isinstance(finish_reason, str):
+            finish_reason = None
+        if not isinstance(completion_tokens, int):
+            completion_tokens = None
+        return content.strip(), finish_reason, completion_tokens

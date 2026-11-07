@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from src.domain.exceptions import (
     LLMProviderError,
     LLMTimeoutError,
+    LLMTruncatedError,
     LLMUnavailableError,
 )
 from src.infrastructure.llm_clients.openai_compatible import OpenAICompatibleLLM
@@ -84,6 +86,69 @@ class TestSuccess:
         finally:
             await client.aclose()
         assert "max_tokens" not in captured["body"]
+
+
+class TestTruncation:
+    @pytest.mark.parametrize("finish_reason", ["length", "max_tokens"])
+    async def test_truncated_completion_raises_without_returning_partial(
+        self, finish_reason: str
+    ) -> None:
+        body = {
+            "model": "modelo-test",
+            "choices": [
+                {
+                    "message": {"content": f"{SECRET} resumen a medias"},
+                    "finish_reason": finish_reason,
+                }
+            ],
+        }
+        llm, client = make_llm(lambda request: httpx.Response(200, json=body))
+        try:
+            with pytest.raises(LLMTruncatedError) as excinfo:
+                await llm.generate_summary("texto", max_tokens=128)
+        finally:
+            await client.aclose()
+
+        assert excinfo.value.code == "llm_truncated"
+        assert excinfo.value.retriable is True
+        assert SECRET not in str(excinfo.value)
+
+    async def test_complete_finish_reason_returns_content(self) -> None:
+        body = {
+            "model": "modelo-test",
+            "choices": [
+                {"message": {"content": "Resumen completo."}, "finish_reason": "stop"}
+            ],
+        }
+        llm, client = make_llm(lambda request: httpx.Response(200, json=body))
+        try:
+            result = await llm.generate_summary("texto", max_tokens=128)
+        finally:
+            await client.aclose()
+
+        assert result == "Resumen completo."
+
+    async def test_logs_finish_reason_without_content(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.INFO, logger="summarizer.infrastructure.llm")
+        body = {
+            "model": "modelo-test",
+            "choices": [
+                {"message": {"content": SECRET}, "finish_reason": "length"}
+            ],
+        }
+        llm, client = make_llm(lambda request: httpx.Response(200, json=body))
+        try:
+            with pytest.raises(LLMTruncatedError):
+                await llm.generate_summary(SECRET, max_tokens=128)
+        finally:
+            await client.aclose()
+
+        assert SECRET not in caplog.text
+        assert any(
+            record.__dict__.get("finish_reason") == "length" for record in caplog.records
+        )
 
 
 class TestLifecycle:

@@ -60,6 +60,13 @@ class LLMUnavailableError(LLMProviderError):
     retriable = True
 
 
+class LLMTruncatedError(LLMProviderError):
+    """El proveedor agotó el límite de salida y devolvió una respuesta parcial."""
+
+    code = "llm_truncated"
+    retriable = True
+
+
 class SummarizationFailedError(DomainError):
     """Se agotaron los reintentos del caso de uso."""
 

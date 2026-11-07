@@ -86,8 +86,14 @@ Formato uniforme: `{ "reason": "<codigo>", "message": "<descripción>" }`
 
 **Error 503 Service Unavailable**
 ```json
-{ "reason": "summarizer_unavailable", "message": "LLM provider timeout / rate limit / network error" }
+{
+  "reason": "summarizer_unavailable",
+  "message": "LLM provider timeout / rate limit / network error",
+  "cause_code": "llm_truncated"
+}
 ```
+`cause_code` es opcional y solo se agrega cuando el fallo proviene de
+`SummarizationFailedError`; los campos `reason` y `message` se mantienen igual.
 
 **Error 500 Internal Server Error**
 ```json
@@ -171,7 +177,8 @@ Todas las variables están documentadas en [`.env.example`](./.env.example).
 | `CHUNK_THRESHOLD` | Umbral palabras para Map-Reduce | `3000` |
 | `CHUNK_SIZE` | Tamaño chunk (palabras) | `1000` |
 | `CHUNK_OVERLAP` | Solapamiento entre chunks | `100` |
-| `MAX_OUTPUT_TOKENS` | Tokens máximos salida por llamada | `1024` |
+| `MAX_OUTPUT_TOKENS` | Tokens máximos salida por llamada | `4096` |
+| `MAX_OUTPUT_TOKENS_CAP` | Tope de crecimiento al reintentar una salida truncada; debe ser `>= MAX_OUTPUT_TOKENS` y ajustarse al límite real de salida del modelo configurado (pedir más puede devolver HTTP 400) | `8192` |
 
 ### Timeouts y Reintentos
 | Variable | Descripción | Default |

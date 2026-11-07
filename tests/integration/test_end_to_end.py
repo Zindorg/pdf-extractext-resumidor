@@ -110,6 +110,21 @@ class TestMapReduceFlow:
         assert len(publisher.published) == 1
         assert consumer.acked == ["200-1"]
 
+    async def test_long_document_summary_is_published_without_truncation(self) -> None:
+        chunking = ChunkingService(threshold_words=20, chunk_size=30, overlap_words=5)
+        text = " ".join(f"frase numero {i}." for i in range(120))
+        chunk_count = len(chunking.split(text))
+        long_summary = " ".join(f"Resumen completo {i}." for i in range(2000))
+        llm = FakeLLMProvider(responses=["Parcial breve."] * chunk_count + [long_summary])
+        use_case, publisher, consumer, _ = make_stack(llm=llm, chunking=chunking)
+        consumer.queue.append(make_message(make_payload(text), message_id="201-1"))
+
+        await drain(consumer, use_case, publisher)
+
+        assert len(publisher.published) == 1
+        assert publisher.published[0].summary == long_summary
+        assert publisher.published[0].summary.endswith("completo 1999.")
+
 
 class TestFailureFlow:
     async def test_llm_outage_ends_in_dlq_with_ack(self) -> None:
@@ -129,6 +144,24 @@ class TestFailureFlow:
             (payload["document_id"], "summarization_failed:llm_unavailable")
         ]
         assert consumer.acked == ["300-1"]
+
+    async def test_truncated_output_reaches_dlq_without_partial_summary(self) -> None:
+        from src.domain.exceptions import LLMTruncatedError
+
+        use_case, publisher, consumer, _ = make_stack(
+            llm=FakeLLMProvider(failures=[LLMTruncatedError()] * 10),
+            max_retries=3,
+        )
+        payload = make_payload(SECRET)
+        consumer.queue.append(make_message(payload, message_id="302-1"))
+
+        await drain(consumer, use_case, publisher)
+
+        assert publisher.published == []
+        assert publisher.failures == [
+            (payload["document_id"], "summarization_failed:llm_truncated")
+        ]
+        assert consumer.acked == ["302-1"]
 
     async def test_invalid_event_reaches_dlq_without_llm_call(self) -> None:
         use_case, publisher, consumer, llm = make_stack()

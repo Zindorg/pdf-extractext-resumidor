@@ -13,6 +13,7 @@ from src.domain.exceptions import (
     EmptyTextError,
     LLMProviderError,
     LLMTimeoutError,
+    LLMTruncatedError,
     LLMUnavailableError,
     SummarizationFailedError,
 )
@@ -80,7 +81,7 @@ class TestSingleShot:
         assert "Contenido del documento." in prompt
         assert "Longitud deseada: corto." in prompt
         assert "Idioma de salida: es." in prompt
-        assert max_tokens == 1024
+        assert max_tokens == 4096
 
     async def test_max_output_tokens_is_forwarded(self) -> None:
         llm = FakeLLMProvider()
@@ -132,6 +133,47 @@ class TestMapReduce:
         assert "Parcial dos." in reduce_prompt
         assert result.summary == "Resumen final."
 
+    async def test_reduce_is_hierarchical_when_partials_exceed_context(self) -> None:
+        long_partial = " ".join(f"parcial{i}" for i in range(60))
+        llm = FakeLLMProvider(default_response=long_partial)
+        chunking = ChunkingService(threshold_words=5, chunk_size=6, overlap_words=0)
+        use_case = build_use_case(
+            llm,
+            FakeEventPublisher(),
+            chunking=chunking,
+            max_context_tokens=500,
+            max_output_tokens=50,
+            max_output_tokens_cap=100,
+            tokens_per_word=1.0,
+        )
+        text = " ".join(f"palabra{i}." for i in range(60))
+
+        result = await use_case.execute(make_request(text))
+
+        reduce_calls = [prompt for prompt, _ in llm.calls if "Resúmenes parciales:" in prompt]
+        assert len(reduce_calls) > 1
+        assert result.summary == long_partial
+
+    async def test_reduce_depth_limit_raises_document_too_long(self) -> None:
+        long_partial = " ".join(f"parcial{i}" for i in range(60))
+        llm = FakeLLMProvider(default_response=long_partial)
+        chunking = ChunkingService(threshold_words=5, chunk_size=6, overlap_words=0)
+        use_case = build_use_case(
+            llm,
+            FakeEventPublisher(),
+            chunking=chunking,
+            max_context_tokens=150,
+            max_output_tokens=30,
+            max_output_tokens_cap=60,
+            tokens_per_word=1.0,
+        )
+        text = " ".join(f"palabra{i}." for i in range(12))
+
+        with pytest.raises(DocumentTooLongError) as excinfo:
+            await use_case.execute(make_request(text))
+
+        assert excinfo.value.code == "document_too_long"
+
 
 class TestRetriesAndBackoff:
     async def test_transient_failures_are_retried_until_success(self) -> None:
@@ -179,6 +221,44 @@ class TestRetriesAndBackoff:
 
         assert llm.call_count == 2
         assert excinfo.value.cause_code == "llm_timeout"
+
+    async def test_truncated_output_is_retried_with_larger_limit(self) -> None:
+        llm = FakeLLMProvider(
+            failures=[LLMTruncatedError("llm_truncated")],
+            responses=["Resumen completo."],
+        )
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_retries=3,
+            max_output_tokens=100,
+            max_output_tokens_cap=400,
+        )
+
+        result = await use_case.execute(make_request("Texto."))
+
+        assert [call[1] for call in llm.calls] == [100, 200]
+        assert result.summary == "Resumen completo."
+        assert len(publisher.published) == 1
+
+    async def test_persistent_truncation_never_returns_partial(self) -> None:
+        llm = FakeLLMProvider(failures=[LLMTruncatedError("llm_truncated")] * 5)
+        publisher = FakeEventPublisher()
+        use_case = build_use_case(
+            llm,
+            publisher,
+            max_retries=2,
+            max_output_tokens=100,
+            max_output_tokens_cap=400,
+        )
+
+        with pytest.raises(SummarizationFailedError) as excinfo:
+            await use_case.execute(make_request("Texto."))
+
+        assert excinfo.value.cause_code == "llm_truncated"
+        assert llm.call_count == 2
+        assert publisher.published == []
 
 
 class TestPrivacy:
