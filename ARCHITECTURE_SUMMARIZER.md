@@ -152,7 +152,7 @@ pdf-extractext-resumidor/
 │       └── worker/             # Loop de consumo asíncrono (Redis Streams)
 │           ├── main.py         # Composition root, loop de consumo, logging seguro
 │           └── logging_setup.py # PrivacyFilter: redacta claves sensibles en logs
-└── tests/                      # Batería de pruebas unitarias y de integración (154 tests)
+└── tests/                      # Batería de pruebas unitarias, de integración y presentación (169 tests)
     ├── conftest.py             # Fixtures y mocks de clientes (FakeLLMProvider, etc.)
     ├── unit/                   # Tests de casos de uso sin I/O real
     └── integration/            # Pruebas de serialización, endpoints y flujo E2E

@@ -123,6 +123,7 @@ events:text-extracted  →  worker  →  events:summary-generated
 * **Entrada:** `XREADGROUP` sobre `events:text-extracted` (grupo `summarizer-group`)
 * **Validación:** Contrato de entrada (`document_id` UUIDv4 + `extracted_text`)
 * **Chunking:** Si el texto supera `CHUNK_THRESHOLD` (3.000 palabras) aplica **Map-Reduce**
+* **Reduce jerárquico:** Si los parciales no entran en contexto, se reducen por mitades; profundidad máxima 5; al superarla se lanza `DocumentTooLongError`
 * **Timeout:** 30s por intento con backoff exponencial (`MAX_RETRIES`)
 * **Salida:** `XADD` del resultado a `events:summary-generated` + `XACK`
 * **Dead-letter:** `XADD` a `events:summary-failed` con `error_code` + `XACK` (poison pill no bloquea al grupo)
@@ -148,18 +149,20 @@ Campos: `document_id`, `error_code`, `status` — **nunca** texto ni resumen.
 
 ## Variables de Entorno (`.env`)
 
-Todas las variables están documentadas en [`.env.example`](./.env.example).
+La lista completa con valores de ejemplo está en [`.env.example`](./.env.example). Esta tabla resume las variables principales.
 
-### Requeridas para HTTP API
-| Variable | Descripción | Ejemplo |
-|---|---|---|
-| `HTTP_PORT` | Puerto servidor HTTP (FastAPI) | `8080` |
-| `AI_PROVIDER` | Proveedor LLM: `openai`, `openai-compatible`, `ollama`, `vllm`, `lm-studio` | `openai` |
-| `AI_API_KEY` | API Key del proveedor (obligatoria salvo Ollama local) | `sk-...` |
-| `AI_BASE_URL` | Base URL endpoint OpenAI-compatible | `https://api.openai.com/v1` |
-| `AI_MODEL` | Nombre del modelo | `gpt-4o-mini` |
-| `TOKENS_PER_WORD` | Factor estimación tokens/palabra para chunking | `1.3` |
-| `MAX_CONTEXT_TOKENS` | Límite ventana contexto (None = default proveedor) | `128000` |
+### HTTP API
+| Variable | Descripción | Obligatoria | Default |
+|---|---|---|---|
+| `HTTP_ENABLED` | Habilita el servidor HTTP | No | `true` |
+| `HTTP_HOST` | Host de escucha del servidor HTTP | No | `0.0.0.0` |
+| `HTTP_PORT` | Puerto servidor HTTP (FastAPI) | No | `8080` |
+| `AI_PROVIDER` | Proveedor LLM: `openai`, `openai-compatible`, `ollama`, `vllm`, `lm-studio` | No | `openai` |
+| `AI_API_KEY` | API Key del proveedor (obligatoria salvo Ollama local) | Sí | — |
+| `AI_BASE_URL` | Base URL endpoint OpenAI-compatible | No | `https://api.openai.com/v1` |
+| `AI_MODEL` | Nombre del modelo | No | `gpt-4o-mini` |
+| `TOKENS_PER_WORD` | Factor estimación tokens/palabra para chunking | No | `1.3` |
+| `MAX_CONTEXT_TOKENS` | Límite ventana contexto (vacío = default proveedor) | No | `128000` |
 
 ### Worker Async (Redis Streams)
 | Variable | Descripción | Default |
@@ -170,6 +173,9 @@ Todas las variables están documentadas en [`.env.example`](./.env.example).
 | `DLQ_STREAM` | Stream dead-letter | `events:summary-failed` |
 | `CONSUMER_GROUP` | Grupo consumidores | `summarizer-group` |
 | `CONSUMER_NAME` | Nombre consumidor | `summarizer-worker-1` |
+| `BLOCK_MS` | Timeout de bloqueo en `XREADGROUP` (ms) | `5000` |
+| `CLAIM_MIN_IDLE_MS` | Inactividad mínima para reclamar mensajes pendientes (ms) | `60000` |
+| `READ_COUNT` | Mensajes leídos por iteración | `1` |
 
 ### Chunking / Map-Reduce
 | Variable | Descripción | Default |
@@ -226,7 +232,7 @@ Requiere Redis accesible en `REDIS_URL`.
 
 ### Tests
 ```bash
-uv run pytest                    # batería completa (154 tests: unit + integration)
+uv run pytest                    # batería completa (169 tests: unit + integration + presentación)
 uv run pytest --cov=src          # con cobertura
 uv run pytest tests/unit/        # solo unitarios
 uv run pytest tests/integration/ # solo integración
@@ -255,7 +261,7 @@ El `Dockerfile` usa Python 3.12-slim, instala dependencias vía `uv sync --froze
 
 ---
 
-## Estructura de Tests (154 tests)
+## Estructura de Tests (169 tests)
 
 | Archivo | Qué prueba |
 |---|---|
