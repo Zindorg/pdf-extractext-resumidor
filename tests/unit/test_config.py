@@ -59,6 +59,30 @@ class TestEnvironmentOverrides:
         assert settings.max_output_tokens == 2048
         assert settings.max_output_tokens_cap == 4096
 
+    def test_consul_defaults(self) -> None:
+        settings = Settings(_env_file=None)
+        assert settings.consul_enabled is True
+        assert settings.consul_host == "localhost"
+        assert settings.consul_port == 8500
+        assert settings.service_name == "pdf-extractext-resumidor"
+        assert settings.service_host == "0.0.0.0"
+        assert settings.service_port == 8080
+
+    def test_consul_env_overrides(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CONSUL_ENABLED", "false")
+        monkeypatch.setenv("CONSUL_HOST", "consul.internal")
+        monkeypatch.setenv("CONSUL_PORT", "8501")
+        monkeypatch.setenv("SERVICE_NAME", "resumidor-prod")
+        monkeypatch.setenv("SERVICE_HOST", "10.0.0.5")
+        monkeypatch.setenv("SERVICE_PORT", "9090")
+        settings = Settings(_env_file=None)
+        assert settings.consul_enabled is False
+        assert settings.consul_host == "consul.internal"
+        assert settings.consul_port == 8501
+        assert settings.service_name == "resumidor-prod"
+        assert settings.service_host == "10.0.0.5"
+        assert settings.service_port == 9090
+
 
 class TestValidation:
     @pytest.mark.parametrize(
@@ -70,6 +94,8 @@ class TestValidation:
             {"max_retries": 0},
             {"block_ms": -1},
             {"max_output_tokens": 9000, "max_output_tokens_cap": 8192},
+            {"consul_port": 0},
+            {"service_port": 70000},
         ],
     )
     def test_invalid_settings_raise(self, kwargs: dict) -> None:

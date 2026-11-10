@@ -60,6 +60,14 @@ class Settings(BaseSettings):
     http_host: str = "0.0.0.0"
     http_port: int = Field(default=8080, ge=1, le=65535)
 
+    # Service Discovery (Consul)
+    consul_enabled: bool = True
+    consul_host: str = "localhost"
+    consul_port: int = Field(default=8500, ge=1, le=65535)
+    service_name: str = "pdf-extractext-resumidor"
+    service_host: str = "0.0.0.0"
+    service_port: int = Field(default=8080, ge=1, le=65535)
+
     # Observabilidad
     log_level: str = "INFO"
 
