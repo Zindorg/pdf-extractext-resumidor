@@ -1,10 +1,30 @@
 services:
   summarizer:
+    image: pdf-extractext-resumidor:v${VERSIONRES:-1.0.1}
     build: .
-    container_name: ms_summarizer
     restart: unless-stopped
     command: ["/app/.venv/bin/python", "-m", "src.presentation.http.main"]
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
+    environment:
+      - TZ=${TZ:-America/Argentina/Mendoza}
+      - HTTP_HOST=0.0.0.0
+      - HTTP_PORT=8080
+      - AI_API_KEY=${AI_API_KEY:?definir AI_API_KEY}
+      - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
+      - AI_BASE_URL=${AI_BASE_URL:-https://api.openai.com/v1}
+      # Registro en Consul
+      - CONSUL_HTTP_ADDR=${CONSUL_HTTP_ADDR-http://consul:8500}
+      - CONSUL_HTTP_TOKEN=${CONSUL_HTTP_TOKEN:-}
+      - SERVICE_ADDRESS=summarizer
+    networks: [mired]
+    labels:
+      - traefik.enable=true
+      - traefik.edge=internal
+      - traefik.docker.network=mired
+      - traefik.http.routers.summarizer.rule=Host(`summarizer.internal`)
+      - traefik.http.routers.summarizer.entrypoints=http
+      - traefik.http.routers.summarizer.middlewares=int-ratelimit@file,int-cb@file
+      - traefik.http.services.summarizer.loadbalancer.server.port=8080
+
+networks:
+  mired:
+    external: true

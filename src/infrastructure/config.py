@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlparse
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SUPPORTED_PROVIDERS = frozenset({"openai", "openai-compatible", "ollama", "vllm", "lm-studio"})
@@ -64,8 +65,11 @@ class Settings(BaseSettings):
     consul_enabled: bool = True
     consul_host: str = "localhost"
     consul_port: int = Field(default=8500, ge=1, le=65535)
+    consul_http_token: SecretStr = SecretStr("")
+    consul_http_addr: str | None = None  # nombre del grupo: URL completa del agente
     service_name: str = "pdf-extractext-resumidor"
     service_host: str = "0.0.0.0"
+    service_address: str | None = None  # nombre del grupo: alias de service_host
     service_port: int = Field(default=8080, ge=1, le=65535)
 
     # Observabilidad
@@ -92,6 +96,24 @@ class Settings(BaseSettings):
                 f"use one of: {', '.join(sorted(SUPPORTED_PROVIDERS))}"
             )
         self.ai_base_url = self.ai_base_url.rstrip("/")
+        return self
+
+    @model_validator(mode="after")
+    def _apply_group_consul_aliases(self) -> Settings:
+        """Acepta los nombres del grupo: CONSUL_HTTP_ADDR y SERVICE_ADDRESS.
+
+        CONSUL_HTTP_ADDR vacío desactiva el registro (igual que en el orquestador).
+        """
+        if self.consul_http_addr is not None:
+            addr = self.consul_http_addr.strip()
+            if not addr:
+                self.consul_enabled = False
+            else:
+                parsed = urlparse(addr)
+                self.consul_host = parsed.hostname or self.consul_host
+                self.consul_port = parsed.port or self.consul_port
+        if self.service_address:
+            self.service_host = self.service_address.strip()
         return self
 
 

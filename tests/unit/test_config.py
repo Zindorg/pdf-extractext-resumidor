@@ -115,3 +115,28 @@ class TestCache:
         second = get_settings()
         assert first is second
         get_settings.cache_clear()
+
+
+class TestConsulGroupAliases:
+    def test_consul_http_addr_sets_host_and_port(self) -> None:
+        settings = Settings(_env_file=None, consul_http_addr="http://consul.internal:8501")
+
+        assert settings.consul_host == "consul.internal"
+        assert settings.consul_port == 8501
+
+    def test_empty_consul_http_addr_disables_registration(self) -> None:
+        settings = Settings(_env_file=None, consul_http_addr="")
+
+        assert settings.consul_enabled is False
+
+    def test_service_address_sets_service_host(self) -> None:
+        settings = Settings(_env_file=None, service_address="summarizer")
+
+        assert settings.service_host == "summarizer"
+
+    def test_without_aliases_defaults_are_kept(self) -> None:
+        settings = Settings(_env_file=None)
+
+        assert (settings.consul_host, settings.consul_port) == ("localhost", 8500)
+        assert settings.consul_enabled is True
+        assert settings.service_host == "0.0.0.0"

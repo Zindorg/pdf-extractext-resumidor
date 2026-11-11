@@ -110,3 +110,27 @@ class TestServiceId:
         first, _ = make_registrar(ok_handler)
         second, _ = make_registrar(ok_handler)
         assert first.service_id != second.service_id
+
+
+class TestAclToken:
+    async def test_register_sends_token_header_when_configured(self) -> None:
+        registrar, captured = make_registrar(ok_handler, consul_http_token="token-de-prueba")
+
+        await registrar.register()
+
+        assert captured[0].headers["X-Consul-Token"] == "token-de-prueba"
+
+    async def test_deregister_sends_token_header_when_configured(self) -> None:
+        registrar, captured = make_registrar(ok_handler, consul_http_token="token-de-prueba")
+
+        await registrar.deregister()
+
+        assert captured[0].headers["X-Consul-Token"] == "token-de-prueba"
+
+    async def test_no_token_header_when_not_configured(self) -> None:
+        registrar, captured = make_registrar(ok_handler)
+
+        await registrar.register()
+        await registrar.deregister()
+
+        assert all("X-Consul-Token" not in request.headers for request in captured)

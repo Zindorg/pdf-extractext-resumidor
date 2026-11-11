@@ -28,12 +28,16 @@ class ConsulServiceRegistrar:
     Endpoints usados (agente local, puerto 8500 por defecto):
     - ``PUT /v1/agent/service/register``
     - ``PUT /v1/agent/service/deregister/{service_id}``
+
+    Si hay token ACL configurado, se envía en el header ``X-Consul-Token``.
     """
 
     def __init__(self, client: httpx.AsyncClient, *, settings: Settings) -> None:
         self._client = client
         self._base_url = f"http://{settings.consul_host}:{settings.consul_port}"
         self._service_id = f"{settings.service_name}-{uuid4().hex[:12]}"
+        token = settings.consul_http_token.get_secret_value()
+        self._headers = {"X-Consul-Token": token} if token else {}
         self._registration = {
             "ID": self._service_id,
             "Name": settings.service_name,
@@ -53,7 +57,11 @@ class ConsulServiceRegistrar:
 
     async def register(self) -> None:
         """Registra el servicio con su health check. Lanza si Consul falla."""
-        response = await self._client.put(f"{self._base_url}{_REGISTER_PATH}", json=self._registration)
+        response = await self._client.put(
+            f"{self._base_url}{_REGISTER_PATH}",
+            json=self._registration,
+            headers=self._headers,
+        )
         response.raise_for_status()
         logger.info(
             "service registered in consul",
@@ -67,7 +75,8 @@ class ConsulServiceRegistrar:
     async def deregister(self) -> None:
         """Elimina el registro del servicio. Lanza si Consul falla."""
         response = await self._client.put(
-            f"{self._base_url}{_DEREGISTER_PATH.format(service_id=self._service_id)}"
+            f"{self._base_url}{_DEREGISTER_PATH.format(service_id=self._service_id)}",
+            headers=self._headers,
         )
         response.raise_for_status()
         logger.info("service deregistered from consul", extra={"service_id": self._service_id})
